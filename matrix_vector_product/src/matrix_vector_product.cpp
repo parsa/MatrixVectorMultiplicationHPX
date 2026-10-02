@@ -8,7 +8,7 @@
 
 #include <boost/range/irange.hpp>
 #include <hpx/include/parallel_algorithm.hpp>
-#include <hpx/lcos/barrier.hpp>
+#include <hpx/collectives/barrier.hpp>
 
 #include <random>
 
@@ -128,7 +128,6 @@ struct block_data
     double* data_;
     mode mode_;
     
-    HPX_MOVABLE_ONLY(block_data);
 };
 
 struct block_component
@@ -204,7 +203,7 @@ std::vector<double> multiply(
 }
   
 
-int hpx_main(boost::program_options::variables_map& vm)
+int hpx_main(hpx::program_options::variables_map& vm)
 {
     const hpx::id_type here = hpx::find_here();
     const bool root = (here == hpx::find_root_locality());
@@ -284,8 +283,8 @@ int hpx_main(boost::program_options::variables_map& vm)
         
     auto range = boost::irange(local_blocks_begin, local_blocks_end);
         
-    hpx::parallel::for_each(
-        hpx::parallel::par, boost::begin(range), boost::end(range),
+    hpx::for_each(
+        hpx::execution::par, boost::begin(range), boost::end(range),
         [&](boost::uint64_t b)
         {                
             hpx::register_with_basename(A_block_basename, A[b].get_id(), b);
@@ -317,8 +316,8 @@ int hpx_main(boost::program_options::variables_map& vm)
     
     rand_double rd(low, high);
 
-    hpx::parallel::for_each(
-        hpx::parallel::par, boost::begin(range), boost::end(range),
+    hpx::for_each(
+        hpx::execution::par, boost::begin(range), boost::end(range),
         [&](boost::uint64_t b)
         {                
                 std::shared_ptr<block_component> A_ptr =
@@ -343,7 +342,7 @@ int hpx_main(boost::program_options::variables_map& vm)
         }
     );
     
-    hpx::lcos::barrier b;
+    hpx::distributed::barrier b(barrier_basename, num_localities);
     
     if (root)
     {
@@ -353,22 +352,14 @@ int hpx_main(boost::program_options::variables_map& vm)
         for (boost::uint64_t i = 0; i != num_columns; ++i)
             x_ptr->data_[i] = rd();  
     
-        b = std::move(hpx::lcos::barrier::create(hpx::find_here(), num_localities));
-        hpx::agas::register_name_sync(barrier_basename, b.get_id());
-    }
-    else
-    {
-        hpx::id_type idb = hpx::agas::on_symbol_namespace_event(
-                barrier_basename, hpx::agas::symbol_ns_bind, true).get();
-        b = std::move(hpx::lcos::barrier(idb));
     }
         
     b.wait();
     
     for (boost::uint64_t iter = 0; iter != iterations; ++iter)
     {   
-         hpx::parallel::for_each(
-            hpx::parallel::par, boost::begin(range), boost::end(range),
+         hpx::for_each(
+            hpx::execution::par, boost::begin(range), boost::end(range),
             [&](boost::uint64_t b)
             {                
                     std::shared_ptr<block_component> rhs_ptr =
@@ -382,10 +373,10 @@ int hpx_main(boost::program_options::variables_map& vm)
             }
         );
         
-        hpx::util::high_resolution_timer t;
+        hpx::chrono::high_resolution_timer t;
                
-        hpx::parallel::for_each(
-            hpx::parallel::par, boost::begin(range), boost::end(range),
+        hpx::for_each(
+            hpx::execution::par, boost::begin(range), boost::end(range),
             [&](boost::uint64_t b)
             {
                 std::shared_ptr<block_component> rhs_ptr =
@@ -400,7 +391,7 @@ int hpx_main(boost::program_options::variables_map& vm)
                     block_columns,
                     tile_size
                 ).then(
-                    hpx::util::unwrapped(
+                    hpx::unwrapping(
                         [&](std::vector<double> r)
                         {
                             std::copy(r.begin(), r.end(), rhs_ptr->data_.begin());
@@ -489,7 +480,7 @@ int hpx_main(boost::program_options::variables_map& vm)
 
 int main(int argc, char* argv[])
 {    
-    using namespace boost::program_options;
+    using namespace hpx::program_options;
 
     options_description desc_commandline;
     desc_commandline.add_options()
@@ -516,5 +507,8 @@ int main(int argc, char* argv[])
     std::vector<std::string> cfg;
     cfg.push_back("hpx.run_hpx_main!=1");
 
-    return hpx::init(desc_commandline, argc, argv, cfg);
+    hpx::init_params params;
+    params.desc_cmdline = desc_commandline;
+    params.cfg = cfg;
+    return hpx::init(argc, argv, params);
 }

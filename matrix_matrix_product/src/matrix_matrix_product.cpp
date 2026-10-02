@@ -126,7 +126,6 @@ struct block_data
     double* data_;
     mode mode_;
     
-    HPX_MOVABLE_ONLY(block_data);
 };
 
 struct block_component
@@ -202,7 +201,7 @@ void multiply(hpx::future<block_data> A_fut, hpx::future<block_data> B_fut,
 }
   
 
-int hpx_main(boost::program_options::variables_map& vm)
+int hpx_main(hpx::program_options::variables_map& vm)
 {
     hpx::id_type here = hpx::find_here();
     bool root = (here == hpx::find_root_locality());
@@ -280,8 +279,8 @@ int hpx_main(boost::program_options::variables_map& vm)
         
     auto range = boost::irange(local_blocks_begin, local_blocks_end);
     
-    hpx::parallel::for_each(
-        hpx::parallel::par, boost::begin(range), boost::end(range),
+    hpx::for_each(
+        hpx::execution::par, boost::begin(range), boost::end(range),
         [&](boost::uint64_t b)
         {             
             rand_double rd(low, high);
@@ -339,13 +338,13 @@ int hpx_main(boost::program_options::variables_map& vm)
     
     for (boost::uint64_t iter = 0; iter != iterations; ++iter)
     {           
-        hpx::util::high_resolution_timer t;
+        hpx::chrono::high_resolution_timer t;
                 
         std::vector<hpx::future<void> > block_futures;
             block_futures.resize(num_blocks);
         
-        hpx::parallel::for_each(
-            hpx::parallel::par, boost::begin(range), boost::end(range),
+        hpx::for_each(
+            hpx::execution::par, boost::begin(range), boost::end(range),
             [&](boost::uint64_t b)
             {
                  auto phase_range =
@@ -469,7 +468,7 @@ int hpx_main(boost::program_options::variables_map& vm)
 
 int main(int argc, char* argv[])
 {    
-    using namespace boost::program_options;
+    using namespace hpx::program_options;
 
     options_description desc_commandline;
     desc_commandline.add_options()
@@ -492,5 +491,8 @@ int main(int argc, char* argv[])
     std::vector<std::string> cfg;
     cfg.push_back("hpx.run_hpx_main!=1");
 
-    return hpx::init(desc_commandline, argc, argv, cfg);
+    hpx::init_params params;
+    params.desc_cmdline = desc_commandline;
+    params.cfg = cfg;
+    return hpx::init(argc, argv, params);
 }
